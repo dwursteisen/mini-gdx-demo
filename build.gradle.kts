@@ -36,7 +36,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("stdlib-common"))
                 implementation("com.github.dwursteisen.kotlin-math:kotlin-math:1.0.0-alpha18")
-                implementation("com.github.dwursteisen.minigdx:minigdx:1.0-SNAPSHOT")
+                implementation("com.github.dwursteisen.minigdx:minigdx:1.1-SNAPSHOT")
                 implementation("com.github.dwursteisen.gltf:gltf-api:1.0.0-alpha8")
             }
         }

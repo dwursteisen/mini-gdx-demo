@@ -1,12 +1,17 @@
 package com.github.dwursteisen.minigdx.demo
 
-import com.curiouscreature.kotlin.math.*
+import com.curiouscreature.kotlin.math.Float3
+import com.curiouscreature.kotlin.math.Mat4
+import com.curiouscreature.kotlin.math.min
+import com.curiouscreature.kotlin.math.translation
 import com.dwursteisen.minigdx.scene.api.Scene
-import com.dwursteisen.minigdx.scene.api.camera.PerspectiveCamera
-import com.github.dwursteisen.minigdx.*
+import com.github.dwursteisen.minigdx.GameContext
+import com.github.dwursteisen.minigdx.Seconds
 import com.github.dwursteisen.minigdx.ecs.Engine
 import com.github.dwursteisen.minigdx.ecs.components.Component
+import com.github.dwursteisen.minigdx.ecs.components.MeshPrimitive
 import com.github.dwursteisen.minigdx.ecs.components.Position
+import com.github.dwursteisen.minigdx.ecs.createFrom
 import com.github.dwursteisen.minigdx.ecs.entities.Entity
 import com.github.dwursteisen.minigdx.ecs.systems.EntityQuery
 import com.github.dwursteisen.minigdx.ecs.systems.System
@@ -14,15 +19,13 @@ import com.github.dwursteisen.minigdx.game.GameSystem
 import com.github.dwursteisen.minigdx.game.Screen
 import com.github.dwursteisen.minigdx.input.InputHandler
 import com.github.dwursteisen.minigdx.input.Key
-import com.github.dwursteisen.minigdx.render.Camera
-import com.github.dwursteisen.minigdx.render.MeshPrimitive
 import kotlin.math.max
 import kotlin.math.min
 
 
 class Player(var rotation: Float = 0f) : Component
 class Terrain : Component
-class Bullet(var fired: Boolean = false, val player: Entity) : Component
+class Bullet(var fired: Boolean = false) : Component
 
 @ExperimentalStdlibApi
 class RotationSystem : System(EntityQuery(MeshPrimitive::class)) {
@@ -40,18 +43,22 @@ class PlayerControl(private val inputs: InputHandler) : System(EntityQuery(Playe
     }
 
     override fun update(delta: Seconds, entity: Entity) {
-        entity.get(Position::class).setRotationZ(0f)
+        val position = entity.get(Position::class)
+
+        position.setRotationZ(0f)
         if (inputs.isKeyPressed(Key.ARROW_LEFT)) {
-            entity.get(Position::class).translate(50f * delta)
+            position.translate(50f * delta)
             val player = entity.get(Player::class)
             player.rotation = max(-1f, player.rotation - delta)
         } else if (inputs.isKeyPressed(Key.ARROW_RIGHT)) {
-            entity.get(Position::class).translate(-50f * delta)
+            position.translate(-50f * delta)
             val player = entity.get(Player::class)
             player.rotation = min(1f, player.rotation + delta)
         }
+        position.setTranslate(x = max(min(10f, position.translation.x), -10f))
+
         val player = entity.get(Player::class)
-        entity.get(Position::class).setRotationZ(player.rotation * 180f)
+        position.setRotationZ(player.rotation * 180f)
         player.rotation = lerp(0f, player.rotation, 0.9f)
     }
 }
@@ -71,11 +78,12 @@ class TerrainMove : System(EntityQuery(Terrain::class)) {
 
 class BulletMove(private val inputs: InputHandler) : System(EntityQuery(Bullet::class)) {
 
+    private val players by interested(EntityQuery(Player::class))
+
     override fun update(delta: Seconds) {
         if (inputs.isKeyJustPressed(Key.SPACE)) {
             entities.firstOrNull { !it.get(Bullet::class).fired }?.run {
-                val player = this.get(Bullet::class).player
-                this.get(Position::class).setTranslate(player.get(Position::class).translation)
+                this.get(Position::class).setTranslate(players.first().get(Position::class).translation)
                 this.get(Bullet::class).fired = true
             }
         }
@@ -93,26 +101,17 @@ class BulletMove(private val inputs: InputHandler) : System(EntityQuery(Bullet::
 }
 
 @ExperimentalStdlibApi
-class SpaceshipScreen(private val gameContext: GameContext) : Screen {
+class SpaceshipScreen(override val gameContext: GameContext) : Screen {
 
     private val spaceship: Scene by gameContext.fileHandler.get("spaceship.protobuf")
 
     override fun createEntities(engine: Engine) {
-        var playerEntity: Entity? = null
+
         // Create the player model
         spaceship.models["Player"]?.let { player ->
-            playerEntity = engine.create {
-                player.mesh.primitives.forEach { primitive ->
-                    add(
-                        MeshPrimitive(
-                            primitive = primitive,
-                            material = spaceship.materials.values.first { it.id == primitive.materialId }
-                        )
-                    )
-                }
-                add(Player())
-                add(Position(Mat4.fromColumnMajor(*player.transformation.matrix)))
-            }
+            val playerEntity = engine.createFrom(player, spaceship)
+            playerEntity.add(Player())
+
         }
 
         spaceship.models["Bullet"]?.let { bullet ->
@@ -125,8 +124,7 @@ class SpaceshipScreen(private val gameContext: GameContext) : Screen {
             (0..100).forEach { _ ->
                 engine.create {
                     models.forEach { add(it) }
-                    // hack
-                    add(Bullet(player = playerEntity!!))
+                    add(Bullet())
                     add(Position(Mat4.fromColumnMajor(*bullet.transformation.matrix)))
                 }
             }
@@ -161,27 +159,8 @@ class SpaceshipScreen(private val gameContext: GameContext) : Screen {
         }
 
         // Create the camera
-        spaceship.perspectiveCameras.values.forEach { camera ->
-            camera as PerspectiveCamera
-            engine.create {
-                add(
-                    Camera(
-                        projection = perspective(
-                            fov = camera.fov,
-                            aspect = gameContext.ratio,
-                            near = camera.near,
-                            far = camera.far
-                        )
-                    )
-                )
-                add(
-                    Position(
-                        transformation = Mat4.fromColumnMajor(
-                            *camera.transformation.matrix
-                        ), way = -1f
-                    )
-                )
-            }
+        spaceship.orthographicCameras.values.forEach { camera ->
+            engine.createFrom(camera, gameContext)
         }
     }
 

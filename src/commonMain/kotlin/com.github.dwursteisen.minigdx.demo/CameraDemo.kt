@@ -7,16 +7,15 @@ import com.dwursteisen.minigdx.scene.api.camera.PerspectiveCamera
 import com.github.dwursteisen.minigdx.GL
 import com.github.dwursteisen.minigdx.GameContext
 import com.github.dwursteisen.minigdx.ecs.Engine
+import com.github.dwursteisen.minigdx.ecs.components.MeshPrimitive
 import com.github.dwursteisen.minigdx.ecs.components.Position
+import com.github.dwursteisen.minigdx.ecs.createFrom
 import com.github.dwursteisen.minigdx.ecs.systems.System
-import com.github.dwursteisen.minigdx.fileHandler
 import com.github.dwursteisen.minigdx.game.GameSystem
 import com.github.dwursteisen.minigdx.game.Screen
-import com.github.dwursteisen.minigdx.render.Camera
-import com.github.dwursteisen.minigdx.render.MeshPrimitive
 
 @ExperimentalStdlibApi
-class CameraScreen(private val gameContext: GameContext) : Screen {
+class CameraScreen(override val gameContext: GameContext) : Screen {
 
     private val spaceship: Scene by gameContext.fileHandler.get("cameras.protobuf")
 
@@ -40,25 +39,7 @@ class CameraScreen(private val gameContext: GameContext) : Screen {
         // Create the camera
         val (_, _, camera) = spaceship.perspectiveCameras.values.toList()
         camera as PerspectiveCamera
-        engine.create {
-            add(
-                Camera(
-                    projection = perspective(
-                        fov = camera.fov,
-                        aspect = gameContext.ratio,
-                        near = camera.near,
-                        far = camera.far
-                    )
-                )
-            )
-            val transformation = Mat4.fromColumnMajor(*camera.transformation.matrix)
-            add(
-                Position(
-                    transformation = transformation,
-                    way = -1f
-                )
-            )
-        }
+        engine.createFrom(camera, gameContext)
     }
 
     override fun createSystems(): List<System> {
