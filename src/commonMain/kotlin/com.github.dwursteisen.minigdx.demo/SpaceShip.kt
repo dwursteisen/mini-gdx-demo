@@ -19,6 +19,7 @@ import com.github.dwursteisen.minigdx.game.GameSystem
 import com.github.dwursteisen.minigdx.game.Screen
 import com.github.dwursteisen.minigdx.input.InputHandler
 import com.github.dwursteisen.minigdx.input.Key
+import com.github.dwursteisen.minigdx.math.Vector3
 import kotlin.math.max
 import kotlin.math.min
 
@@ -55,7 +56,7 @@ class PlayerControl(private val inputs: InputHandler) : System(EntityQuery(Playe
             val player = entity.get(Player::class)
             player.rotation = min(1f, player.rotation + delta)
         }
-        position.setTranslate(x = max(min(10f, position.translation.x), -10f))
+        position.setTranslate(x = max(min(20f, position.translation.x), -20f))
 
         val player = entity.get(Player::class)
         position.setRotationZ(player.rotation * 180f)
@@ -83,7 +84,13 @@ class BulletMove(private val inputs: InputHandler) : System(EntityQuery(Bullet::
     override fun update(delta: Seconds) {
         if (inputs.isKeyJustPressed(Key.SPACE)) {
             entities.firstOrNull { !it.get(Bullet::class).fired }?.run {
-                this.get(Position::class).setTranslate(players.first().get(Position::class).translation)
+                val playerPosition = players.first().get(Position::class)
+                val translation = Vector3(
+                    playerPosition.translation.x * playerPosition.scale.x,
+                    playerPosition.translation.y * playerPosition.scale.y,
+                    playerPosition.translation.z * playerPosition.scale.z
+                )
+                this.get(Position::class).setTranslate(translation)
                 this.get(Bullet::class).fired = true
             }
         }
