@@ -51,19 +51,19 @@ class PlayerControl(private val inputs: InputHandler) : System(EntityQuery(Playe
 
         position.setRotationZ(0f)
         if (inputs.isKeyPressed(Key.ARROW_LEFT)) {
-            position.translate(50f * delta)
+            position.translate(100f * delta)
             val player = entity.get(Player::class)
             player.rotation = max(-1f, player.rotation - delta)
         } else if (inputs.isKeyPressed(Key.ARROW_RIGHT)) {
-            position.translate(-50f * delta)
+            position.translate(-100f * delta)
             val player = entity.get(Player::class)
             player.rotation = min(1f, player.rotation + delta)
         }
-        position.setTranslate(x = max(min(20f, position.translation.x), -20f))
+        position.setTranslate(x = max(min(50f, position.translation.x), -50f))
 
         val player = entity.get(Player::class)
         position.setRotationZ(player.rotation * 180f)
-        player.rotation = lerp(0f, player.rotation, 0.9f)
+        player.rotation = lerp(0f, player.rotation, 0.95f)
     }
 }
 
@@ -120,7 +120,7 @@ class MonsterSpawnSystem(
         engine.create {
             val aa by model
             add(aa)
-            add(Position().setTranslate(0f, 0f, 40f))
+            add(Position().setTranslate(0f, 0f, 60f))
             add(Monster())
         }
     }
@@ -133,7 +133,7 @@ class MonsterSystem : System(EntityQuery(Monster::class)) {
     override fun update(delta: Seconds, entity: Entity) {
         val monster = entity.get(Monster::class)
         monster.time += delta
-        entity.get(Position::class).translate(z = -10f * delta, x = 0.1f * cos(monster.time * 2f))
+        entity.get(Position::class).translate(z = -10f * delta, x = 0.2f * cos(monster.time * 2f))
 
         if(monster.time > 10f) {
             remove(entity) // hum.
