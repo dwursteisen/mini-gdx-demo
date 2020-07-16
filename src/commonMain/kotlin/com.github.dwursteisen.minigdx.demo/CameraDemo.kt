@@ -42,7 +42,7 @@ class CameraScreen(override val gameContext: GameContext) : Screen {
         engine.createFrom(camera, gameContext)
     }
 
-    override fun createSystems(): List<System> {
+    override fun createSystems(engine: Engine): List<System> {
         return emptyList()
     }
 }

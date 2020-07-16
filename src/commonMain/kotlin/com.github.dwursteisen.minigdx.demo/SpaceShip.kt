@@ -2,7 +2,6 @@ package com.github.dwursteisen.minigdx.demo
 
 import com.curiouscreature.kotlin.math.Float3
 import com.curiouscreature.kotlin.math.Mat4
-import com.curiouscreature.kotlin.math.min
 import com.curiouscreature.kotlin.math.translation
 import com.dwursteisen.minigdx.scene.api.Scene
 import com.github.dwursteisen.minigdx.GameContext
@@ -15,11 +14,14 @@ import com.github.dwursteisen.minigdx.ecs.createFrom
 import com.github.dwursteisen.minigdx.ecs.entities.Entity
 import com.github.dwursteisen.minigdx.ecs.systems.EntityQuery
 import com.github.dwursteisen.minigdx.ecs.systems.System
+import com.github.dwursteisen.minigdx.ecs.systems.TemporalSystem
+import com.github.dwursteisen.minigdx.file.Content
 import com.github.dwursteisen.minigdx.game.GameSystem
 import com.github.dwursteisen.minigdx.game.Screen
 import com.github.dwursteisen.minigdx.input.InputHandler
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 
@@ -27,6 +29,7 @@ import kotlin.math.min
 class Player(var rotation: Float = 0f) : Component
 class Terrain : Component
 class Bullet(var fired: Boolean = false) : Component
+class Monster(var time: Float = 0f) : Component
 
 @ExperimentalStdlibApi
 class RotationSystem : System(EntityQuery(MeshPrimitive::class)) {
@@ -108,12 +111,44 @@ class BulletMove(private val inputs: InputHandler) : System(EntityQuery(Bullet::
 }
 
 @ExperimentalStdlibApi
+class MonsterSpawnSystem(
+    private val model: Content<MeshPrimitive>,
+    private val engine: Engine
+) : TemporalSystem(2f) {
+
+    override fun timeElapsed() {
+        engine.create {
+            val aa by model
+            add(aa)
+            add(Position().setTranslate(0f, 0f, 40f))
+            add(Monster())
+        }
+    }
+
+    override fun update(delta: Seconds, entity: Entity) = Unit
+}
+
+class MonsterSystem : System(EntityQuery(Monster::class)) {
+
+    override fun update(delta: Seconds, entity: Entity) {
+        val monster = entity.get(Monster::class)
+        monster.time += delta
+        entity.get(Position::class).translate(z = -10f * delta, x = 0.1f * cos(monster.time * 2f))
+
+        if(monster.time > 10f) {
+            remove(entity) // hum.
+        }
+    }
+}
+
+@ExperimentalStdlibApi
 class SpaceshipScreen(override val gameContext: GameContext) : Screen {
 
     private val spaceship: Scene by gameContext.fileHandler.get("spaceship.protobuf")
 
-    override fun createEntities(engine: Engine) {
+    private val monsterReference: Content<MeshPrimitive> = Content("fake")
 
+    override fun createEntities(engine: Engine) {
         // Create the player model
         spaceship.models["Player"]?.let { player ->
             val playerEntity = engine.createFrom(player, spaceship)
@@ -121,6 +156,7 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
 
         }
 
+        // Create the bullet model
         spaceship.models["Bullet"]?.let { bullet ->
             val models = bullet.mesh.primitives.map { primitive ->
                 MeshPrimitive(
@@ -135,6 +171,11 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
                     add(Position(Mat4.fromColumnMajor(*bullet.transformation.matrix)))
                 }
             }
+        }
+
+        spaceship.models["Monster"]?.let { model ->
+            val monster = engine.createFrom(model, spaceship)
+            monsterReference.load(monster.get(MeshPrimitive::class))
         }
 
         // Create terrains
@@ -171,11 +212,13 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
         }
     }
 
-    override fun createSystems(): List<System> {
+    override fun createSystems(engine: Engine): List<System> {
         return listOf(
             PlayerControl(gameContext.input),
             TerrainMove(),
-            BulletMove(gameContext.input)
+            BulletMove(gameContext.input),
+            MonsterSpawnSystem(monsterReference, engine),
+            MonsterSystem()
         )
     }
 }
