@@ -8,16 +8,16 @@ import com.github.dwursteisen.minigdx.GameContext
 import com.github.dwursteisen.minigdx.Seconds
 import com.github.dwursteisen.minigdx.ecs.Engine
 import com.github.dwursteisen.minigdx.ecs.components.Component
-import com.github.dwursteisen.minigdx.ecs.components.MeshPrimitive
 import com.github.dwursteisen.minigdx.ecs.components.Position
+import com.github.dwursteisen.minigdx.ecs.components.gl.MeshPrimitive
 import com.github.dwursteisen.minigdx.ecs.createFrom
 import com.github.dwursteisen.minigdx.ecs.entities.Entity
 import com.github.dwursteisen.minigdx.ecs.systems.EntityQuery
 import com.github.dwursteisen.minigdx.ecs.systems.System
 import com.github.dwursteisen.minigdx.ecs.systems.TemporalSystem
-import com.github.dwursteisen.minigdx.file.Content
 import com.github.dwursteisen.minigdx.game.GameSystem
 import com.github.dwursteisen.minigdx.game.Screen
+import com.github.dwursteisen.minigdx.graphics.GLResourceClient
 import com.github.dwursteisen.minigdx.input.InputHandler
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
@@ -40,7 +40,7 @@ class RotationSystem : System(EntityQuery(MeshPrimitive::class)) {
     }
 }
 
-class PlayerControl(private val inputs: InputHandler) : System(EntityQuery(Player::class)) {
+class PlayerControl(private val engine: Engine, private val resources: GLResourceClient, private val inputs: InputHandler) : System(EntityQuery(Player::class)) {
 
     private fun lerp(a: Float, b: Float, f: Float): Float {
         return a + f * (b - a)
@@ -64,6 +64,21 @@ class PlayerControl(private val inputs: InputHandler) : System(EntityQuery(Playe
         val player = entity.get(Player::class)
         position.setRotationZ(player.rotation * 180f)
         player.rotation = lerp(0f, player.rotation, 0.95f)
+
+
+        if (inputs.isKeyJustPressed(Key.SPACE)) {
+            engine.create {
+                val translation = Vector3(
+                    position.translation.x * position.scale.x,
+                    position.translation.y * position.scale.y,
+                    position.translation.z * position.scale.z
+                )
+
+                add(Bullet())
+                add(Position().setTranslate(translation))
+                add(resources.get("Bullet"))
+            }
+        }
     }
 }
 
@@ -82,44 +97,25 @@ class TerrainMove : System(EntityQuery(Terrain::class)) {
 
 class BulletMove(private val inputs: InputHandler) : System(EntityQuery(Bullet::class)) {
 
-    private val players by interested(EntityQuery(Player::class))
-
-    override fun update(delta: Seconds) {
-        if (inputs.isKeyJustPressed(Key.SPACE)) {
-            entities.firstOrNull { !it.get(Bullet::class).fired }?.run {
-                val playerPosition = players.first().get(Position::class)
-                val translation = Vector3(
-                    playerPosition.translation.x * playerPosition.scale.x,
-                    playerPosition.translation.y * playerPosition.scale.y,
-                    playerPosition.translation.z * playerPosition.scale.z
-                )
-                this.get(Position::class).setTranslate(translation)
-                this.get(Bullet::class).fired = true
-            }
-        }
-        super.update(delta)
-    }
-
     override fun update(delta: Seconds, entity: Entity) {
         val position = entity.get(Position::class)
         if (position.transformation.position.z < 100f) {
             position.translate(z = delta * 120f)
         } else {
-            entity.get(Bullet::class).fired = false
+            remove(entity)
         }
     }
 }
 
 @ExperimentalStdlibApi
 class MonsterSpawnSystem(
-    private val model: Content<MeshPrimitive>,
+    private val resource: GLResourceClient,
     private val engine: Engine
 ) : TemporalSystem(2f) {
 
     override fun timeElapsed() {
         engine.create {
-            val aa by model
-            add(aa)
+            add(resource.get("Monster"))
             add(Position().setTranslate(0f, 0f, 60f))
             add(Monster())
         }
@@ -135,7 +131,7 @@ class MonsterSystem : System(EntityQuery(Monster::class)) {
         monster.time += delta
         entity.get(Position::class).translate(z = -10f * delta, x = 0.2f * cos(monster.time * 2f))
 
-        if(monster.time > 10f) {
+        if (monster.time > 10f) {
             remove(entity) // hum.
         }
     }
@@ -146,14 +142,11 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
 
     private val spaceship: Scene by gameContext.fileHandler.get("spaceship.protobuf")
 
-    private val monsterReference: Content<MeshPrimitive> = Content("fake")
-
     override fun createEntities(engine: Engine) {
         // Create the player model
         spaceship.models["Player"]?.let { player ->
-            val playerEntity = engine.createFrom(player, spaceship)
+            val playerEntity = engine.createFrom(player, spaceship, gameContext)
             playerEntity.add(Player())
-
         }
 
         // Create the bullet model
@@ -164,44 +157,34 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
                     material = spaceship.materials.values.first { it.id == primitive.materialId }
                 )
             }
-            (0..100).forEach { _ ->
-                engine.create {
-                    models.forEach { add(it) }
-                    add(Bullet())
-                    add(Position(Mat4.fromColumnMajor(*bullet.transformation.matrix)))
-                }
-            }
+            gameContext.glResourceClient.compile("Bullet", models)
         }
 
         spaceship.models["Monster"]?.let { model ->
-            val monster = engine.createFrom(model, spaceship)
-            monsterReference.load(monster.get(MeshPrimitive::class))
-        }
-
-        // Create terrains
-        spaceship.models["Terrain"]?.let { terrain ->
-            val model = terrain.mesh.primitives.map { primitive ->
+            val models = model.mesh.primitives.map { primitive ->
                 MeshPrimitive(
                     primitive = primitive,
                     material = spaceship.materials.values.first { it.id == primitive.materialId }
                 )
-
             }
+            gameContext.glResourceClient.compile("Monster", models)
+        }
+
+        // Create terrains
+        spaceship.models["Terrain"]?.let { terrain ->
+            val models = terrain.mesh.primitives.map { primitive ->
+                MeshPrimitive(
+                    primitive = primitive,
+                    material = spaceship.materials.values.first { it.id == primitive.materialId }
+                )
+            }
+            gameContext.glResourceClient.compile("Terrain", models)
+
             (0..10).forEach { index ->
                 engine.create {
-                    model.forEach { add(it) }
+                    add(models)
                     add(Terrain())
-                    add(
-                        Position(
-                            Mat4.fromColumnMajor(*terrain.transformation.matrix) * translation(
-                                Float3(
-                                    0f,
-                                    0f,
-                                    index * 20f
-                                )
-                            )
-                        )
-                    )
+                    add(Position(transformation = Mat4.fromColumnMajor(*terrain.transformation.matrix)).translate(z = index * 20f))
                 }
             }
         }
@@ -214,12 +197,17 @@ class SpaceshipScreen(override val gameContext: GameContext) : Screen {
 
     override fun createSystems(engine: Engine): List<System> {
         return listOf(
-            PlayerControl(gameContext.input),
+            PlayerControl(engine, gameContext.glResourceClient, gameContext.input),
             TerrainMove(),
             BulletMove(gameContext.input),
-            MonsterSpawnSystem(monsterReference, engine),
+            MonsterSpawnSystem(gameContext.glResourceClient, engine),
             MonsterSystem()
         )
+    }
+
+    override fun render(engine: Engine, delta: Seconds) {
+
+        super.render(engine, delta)
     }
 }
 
